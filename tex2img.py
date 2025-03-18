@@ -17,7 +17,7 @@ from tempfile import TemporaryDirectory
 from ctypes.util import find_library
 from inspect import cleandoc
 
-_VALID_EXTS = [".pdf", ".svg", ".eps"]
+_VALID_EXTS = [".pdf", ".svg", ".eps", ".jpg", ".png"]
 
 
 class TeX2img:
@@ -77,15 +77,19 @@ class TeX2img:
         self.commands = {
             "latex": {
                 "path": None,
-                "command": "latex -interaction nonstepmode -halt-on-error {tex_file}",
+                "command": "latex -interaction nonstopmode -halt-on-error {tex_file}",
             },
             "pdflatex": {"path": None, "command": "pdflatex {tex_file}"},
-            "dvisvgm": {"path": None, "command": "dvisvgm --no-fonts {tex_file}"},
-            "dvips": {"path": None, "command": "dvips {dvi_file} -o {ps_file}"},
-            "ps2pdf": {"path": None, "command": "ps2pdf {ps_file} {pdf_file}"},
-            "gs": {
+            "svg": {
                 "path": None,
-                "command": "gs -dNOPAUSE -sDEVICE=pngalpha -o {img_file} -r300 {pdf_file}",
+                "command": "dvisvgm --exact-bbox --no-fonts {dvi_file} -o {out_file}",
+            },
+            "ps": {"path": None, "command": "dvips {dvi_file} -o {out_file}"},
+            "eps": {"path": None, "command": "dvips -E {dvi_file} -o {out_file}"},
+            "ps2pdf": {"path": None, "command": "ps2pdf {ps_file} {out_file}"},
+            "raster": {
+                "path": None,
+                "command": "gs -dNOPAUSE -sDEVICE=pngalpha -o {out_file} -r300 {pdf_file}",
             },
         }
 
@@ -113,7 +117,8 @@ class TeX2img:
         Returns:
             A dictionary containing the different tools and their path, if found in the system.
         """
-        for cmd, options in self.commands.items():
+        for format, options in self.commands.items():
+            cmd = options["command"].split(" ")[0]
             options["path"] = which(cmd)
         return self.commands
 
@@ -133,6 +138,12 @@ class TeX2img:
         fontsize = fontsize or self.fontsize
         return template.safe_substitute(preamble=preamble, fontsize=fontsize, body=body)
 
+    def __run_cmd(self, cmd, wd):
+        ret = subprocess.run(
+            shlex.split(cmd), stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=wd
+        )
+        ret.check_returncode()
+
     def render(self, tex: str, outfile: str, keep: bool = False, wd=None):
         """Render the TeX string to the output image
 
@@ -142,32 +153,65 @@ class TeX2img:
             wd: Working directory. If not supplied, temporary directory
             bool: True to keep intermediary steps. Only makes sense when not providing a temporary directory
         """
-        outpath = Path(outfile).resolve()
-        basename = outpath.with_suffix("")
-        format = outpath.suffix
+        if wd is None:
+            with TemporaryDirectory(suffix="_tex2img") as tmpdir:
+                return self.render(tex, outfile, keep, tmpdir)
 
+        # Where the user wants the file
+        outpath = Path(outfile).resolve()
+        format = outpath.suffix
         if format not in _VALID_EXTS:
             raise KeyError(f"Invalid file extension {format}")
 
-        tmpdir = None
-        if wd is None:
-            tmpdir = TemporaryDirectory(suffix="_tex2img")
-            base_dir = Path(tmpdir.name).resolve()
-        else:
-            base_dir = Path(wd).resolve()
+        # User output filename without extension
+        filename = outpath.stem
 
-        tex_file = base_dir / "code.tex"
-        with open(tex_file, "w+") as fp:
+        # Absolute path to the output file without extension
+        base_file = Path(wd).resolve() / filename
+
+        commands = {name: cmd["command"] for name, cmd in self.commands.items()}
+
+        file_props = {
+            "tex_file": base_file.with_suffix(".tex"),
+            "dvi_file": base_file.with_suffix(".dvi"),
+            "ps_file": base_file.with_suffix(".ps"),
+            "outdir": Path(outfile).parent.resolve(),
+            "filename": filename,
+            "out_file": None,
+        }
+
+        with open(file_props["tex_file"], "w+") as fp:
             fp.write(tex)
 
-        # cmd = shlex.split(self.commands['latex']['command'].format(tex_file=tex_file))
-        # ret = subprocess.run(cmd,
-        #                      stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        #                      cwd=base_dir)
-        # ret.check_returncode()
+        self.__run_cmd(commands["latex"].format(**file_props), wd)
 
-        if not keep and tmpdir:
-            tmpdir.cleanup()
+        if format == ".pdf":
+            file_props["out_file"] = base_file.with_suffix(".ps")
+            self.__run_cmd(commands["ps"].format(**file_props), wd)
+
+            file_props["out_file"] = outpath.with_suffix(".pdf")
+            self.__run_cmd(commands["ps2pdf"].format(**file_props), wd)
+
+        elif format == ".svg":
+            file_props["out_file"] = outpath.with_suffix(".svg")
+            self.__run_cmd(commands["svg"].format(**file_props), wd)
+
+        elif format == ".eps":
+            file_props["out_file"] = outpath.with_suffix(".eps")
+            self.__run_cmd(commands["eps"].format(**file_props), wd)
+
+        elif format == ".png" or format == ".jpg":
+            file_props["out_file"] = base_file.with_suffix(".ps")
+            self.__run_cmd(commands["ps"].format(**file_props), wd)
+
+            file_props["out_file"] = base_file.with_suffix(".pdf")
+            self.__run_cmd(commands["ps2pdf"].format(**file_props), wd)
+
+            file_props["pdf_file"] = base_file.with_suffix(".pdf")
+            file_props["out_file"] = outpath.with_suffix(format)
+            self.__run_cmd(commands["raster"].format(**file_props), wd)
+        else:
+            pass
 
 
 if __name__ == "__main__":
@@ -178,7 +222,7 @@ if __name__ == "__main__":
     Render TeX code from a file or stdin as a document.
 
     The different available flows are the following:
-
+        
     [0] TeX -------> PDF
             pdflatex
     [1] TeX ----> DVI ----> PS -----> PDF
@@ -241,7 +285,7 @@ if __name__ == "__main__":
     converter = TeX2img(template=template, preamble=preamble)
 
     if args["check_deps"]:
-        for cmd, options in converter.check_deps().items():
+        for cmd, options in converter.commands.items():
             print(f'[{cmd:<8}] {options["path"] or "Not found"}')
         sys.exit(0)
 
