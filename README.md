@@ -2,41 +2,40 @@
 
 Render TeX elements to images (SVG, EPS, PDF, JPG and PNG)
 
-Based on the [original work](https://github.com/tuxu/latex2svg) by Timo Wagner and [other improvements](https://github.com/Moonbase59/latex2svg).
-
+Heavily based on the [original work](https://github.com/tuxu/latex2svg) by Timo Wagner and [other improvements](https://github.com/Moonbase59/latex2svg).
 
 ## CLI utility
 
 ```
 $ ./tex2img.py --help
+usage: tex2img.py [-h] [--check-deps] [-v] [--template TEMPLATE] [--preamble PREAMBLE] [--fontsize FONTSIZE] [-i [INPUT]] [-o outfile] [--param key=value] [body ...]
+
 Render TeX code from a file or stdin as a document.
 
 The different available flows are the following:
 
-[0] TeX -------> PDF
-        pdflatex
-[1] TeX ----> DVI ----> PS -----> PDF
+[0] TeX ----> DVI ----> PS -----> PDF
         latex     dvips    ps2pdf
-[2] TeX ----> DVI ----> EPS
+[1] TeX ----> DVI ----> EPS
         latex     dvips
-[3] TeX -------> PDF ----> SVG
-        pdflatex     dvips
-[4] TeX -------> PDF ----> JPG/PNG
-        pdflatex      gs
+[2] TeX ----> DVI ----> SVG
+        latex     dvips
+[3] TeX ----> DVI ----> JPG/PNG
+        latex      gs
 
 positional arguments:
-  body                  Positional arguments or input after --
+  body                  Input string provided after --
 
 options:
   -h, --help            show this help message and exit
   --check-deps          Check installed dependencies
-  --keep                Keep intermediate sources
-  --template TEMPLATE   Document template
+  -v, --verbose         Print the executed commands
+  --template TEMPLATE   Filepath for the document template
+  --preamble PREAMBLE   Filepath for the document preamble
   --fontsize FONTSIZE   Font size. Defaults to 12
-  --dir DIR             Working directory
-  --preamble PREAMBLE   Document preamble
   -i, --input [INPUT]   Path to the input TeX file. If not provided, read from STDIN
-  -o, --output outfile  Path to the output file
+  -o, --output outfile  Path to the output file including extension
+  --param key=value     Additional template parameters. Can be used multiple times
 ```
 
 ## Usage
@@ -45,13 +44,24 @@ Installed dependencies can be checked by using `--check-deps`
 
 ```
 $ ./tex2img.py --check-deps
-[latex   ] /usr/bin/latex
-[pdflatex] /usr/bin/pdflatex
-[svg     ] /usr/bin/dvisvgm
-[ps      ] /usr/bin/dvips
-[eps     ] /usr/bin/dvips
-[ps2pdf  ] /usr/bin/ps2pdf
-[raster  ] /usr/bin/gs
+latex
+  Path: /usr/bin/latex
+  Command: latex -interaction nonstopmode -halt-on-error {tex_file}
+svg
+  Path: /usr/bin/dvisvgm
+  Command: dvisvgm --exact-bbox --no-fonts {dvi_file} -o {out_file}
+ps
+  Path: /usr/bin/dvips
+  Command: dvips {dvi_file} -o {out_file}
+eps
+  Path: /usr/bin/dvips
+  Command: dvips -E {dvi_file} -o {out_file}
+ps2pdf
+  Path: /usr/bin/ps2pdf
+  Command: ps2pdf {ps_file} {out_file}
+raster
+  Path: /usr/bin/gs
+  Command: gs -dNOPAUSE -sDEVICE=pngalpha -o {out_file} -r300 {pdf_file}
 ```
 
 To convert a TeX expression to an image, provide the output path with the `-o` flag, including the desired extension and the input. The input can be provided through STDIN. The flag `-E` is provided to echo to avoid escaping the backlashes.
@@ -70,6 +80,12 @@ The input can be read from a by by using the `-i` flag.
 
 ```
 $ ./tex2img.py -o ./test.jpg -i input.tex
+```
+
+Extra parameters to the templates can be provided by using the `--param` argument. It can be used multiple times
+
+```
+$ ./tex2img.py -o ./test.pdf -i input.tex --param foo='bar' --param response=42
 ```
 
 The TeX document is built first by injecting user input into a `template` with a `preamble`. Both the template and the preamble can be provided from a file by using the respective flags.
