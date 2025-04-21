@@ -1,0 +1,21 @@
+[project]
+name = "tex2img"
+version = "1.0.0"
+description = "Rendex TeX elements to images"
+authors = [{ name = "Sergio Vinagrero", email = "servinagrero@gmail.com" }]
+license = "MIT"
+license-files = ["LICEN[CS]E.*"]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = []
+
+[project.scripts]
+tex2img = "tex2img.cli:main"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[project.urls]
+Repository = "https://github.com/servinagrero/tex2img.git"
+"Bug Tracker" = "https://github.com/servinagrero/tex2img/issues"

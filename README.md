@@ -1,100 +1,139 @@
 # TeX2img
 
-Render TeX elements to images (SVG, EPS, PDF, JPG and PNG)
+Render TeX elements to images (PS, EPS, PDF, SVG, JPG, PNG and TIFF) plus it allows SVGs to be optimized through [scour](https://github.com/scour-project/scour)
 
 Heavily based on the [original work](https://github.com/tuxu/latex2svg) by Timo Wagner and [other improvements](https://github.com/Moonbase59/latex2svg).
 
+## Installation
+
+The utility can be installed with pip or any other system that uses `pyproject.toml`
+
+```shell
+$ pip install --user .
+```
+
 ## CLI utility
 
-```
-$ ./tex2img.py --help
-usage: tex2img.py [-h] [--check-deps] [-v] [--template TEMPLATE] [--preamble PREAMBLE] [--fontsize FONTSIZE] [-i [INPUT]] [-o outfile] [--param key=value] [body ...]
+```shell
+$ tex2img --help
+usage: tex2img [-h] [-v] [--check-deps] [--optimize-svg] [--template-file TEMPLATE_FILE] [--preamble-file PREAMBLE_FILE] [--fontsize FONTSIZE] [-i INPUT_FILE]
+               [-o OUTPUT_FILE] [--param param='value'] [--arguments command='arguments']
+               [body]
 
 Render TeX code from a file or stdin as a document.
 
 The different available flows are the following:
 
-[0] TeX ----> DVI ----> PS -----> PDF
+[0] TeX ----> DVI
+        latex
+[1] TeX ----> DVI ----> PS
+        latex     dvips
+[2] TeX ----> DVI ----> EPS
+        latex     dvips
+[3] TeX ----> DVI ----> PS -----> PDF
         latex     dvips    ps2pdf
-[1] TeX ----> DVI ----> EPS
-        latex     dvips
-[2] TeX ----> DVI ----> SVG
-        latex     dvips
-[3] TeX ----> DVI ----> JPG/PNG
-        latex      gs
+[4] TeX ----> DVI ----> SVG --?--> SVG
+        latex     dvips     scour
+[5] TeX ----> DVI -> JPG/PNG/TIFF
+        latex     gs
 
 positional arguments:
-  body                  Input string provided after --
+  body                  string containing the TeX
 
 options:
   -h, --help            show this help message and exit
-  --check-deps          Check installed dependencies
-  -v, --verbose         Print the executed commands
-  --template TEMPLATE   Filepath for the document template
-  --preamble PREAMBLE   Filepath for the document preamble
-  --fontsize FONTSIZE   Font size. Defaults to 12
-  -i, --input [INPUT]   Path to the input TeX file. If not provided, read from STDIN
-  -o, --output outfile  Path to the output file including extension
-  --param key=value     Additional template parameters. Can be used multiple times
+  -v, --verbose         print the executed commands
+  --check-deps          check installed dependencies
+  --optimize-svg        optimize the SVG using scour
+  --template-file TEMPLATE_FILE
+                        filepath for the document template
+  --preamble-file PREAMBLE_FILE
+                        filepath for the document preamble
+  --fontsize FONTSIZE   font size. Defaults to 12
+  -i, --input-file INPUT_FILE
+                        path to the input TeX file.
+  -o, --output-file OUTPUT_FILE
+                        path to the output file including extension
+  --param param='value'
+                        template parameters
+  --arguments command='arguments'
+                        command arguments
 ```
 
 ## Usage
 
-Installed dependencies can be checked by using `--check-deps`
+Installed dependencies can be checked by using `--check-deps`. This will print the command `[command]` next to the corresponding binary if found in the system or "Not found" otherwise. Bellow each command is the full command with the arguments that will be used to convert the input text to the desired output.
 
-```
-$ ./tex2img.py --check-deps
-latex
-  Path: /usr/bin/latex
-  Command: latex -interaction nonstopmode -halt-on-error {tex_file}
-svg
-  Path: /usr/bin/dvisvgm
-  Command: dvisvgm --exact-bbox --no-fonts {dvi_file} -o {out_file}
-ps
-  Path: /usr/bin/dvips
-  Command: dvips {dvi_file} -o {out_file}
-eps
-  Path: /usr/bin/dvips
-  Command: dvips -E {dvi_file} -o {out_file}
-ps2pdf
-  Path: /usr/bin/ps2pdf
-  Command: ps2pdf {ps_file} {out_file}
-raster
-  Path: /usr/bin/gs
-  Command: gs -dNOPAUSE -sDEVICE=pngalpha -o {out_file} -r300 {pdf_file}
-```
+When trying to convert to a format not supported, a warning will be printed and the process aborted.
 
-To convert a TeX expression to an image, provide the output path with the `-o` flag, including the desired extension and the input. The input can be provided through STDIN. The flag `-E` is provided to echo to avoid escaping the backlashes.
+```shell
+$ tex2img --check-deps
+[dvi] /usr/bin/latex
+latex -interaction nonstopmode -halt-on-error {tex_file}
 
-```
-$ echo -E '$\alpha = 2$' | ./tex2img.py -o ./test.svg
-```
+[ps] /usr/bin/dvips
+dvips {dvi_file} -o {out_file}
 
-The input can also be provided directly after `--`.
+[eps] /usr/bin/dvips
+dvips -E {dvi_file} -o {out_file}
 
-```
-$ ./tex2img.py -o ./test.jpg -- '$\\alpha = 2$'
+[pdf] /usr/bin/ps2pdf
+ps2pdf {ps_file} {out_file}
+
+[svg] /usr/bin/dvisvgm
+dvisvgm --exact-bbox --no-fonts {dvi_file} -o {out_file}
+
+[png] /usr/bin/gs
+gs -dNOPAUSE -sDEVICE=pngalpha -r600 -o {out_file} {pdf_file}
+
+[jpg] /usr/bin/gs
+gs -dNOPAUSE -sDEVICE=jpeg -dJPEGQ=95 -r600 -o {out_file} {pdf_file}
+
+[tiff] /usr/bin/gs
+gs -dNOPAUSE -sDEVICE=tiffg4 -r600 -o {out_file} {pdf_file}
+
+[optimize] /usr/bin/scour
+scour --shorten-ids --shorten-ids-prefix="{prefix}" --no-line-breaks --remove-metadata --enable-comment-stripping --strip-xml-prolog -i {svg_file} -o {out_file}
 ```
 
-The input can be read from a by by using the `-i` flag.
+To convert a TeX expression to an image, provide the output path with the `-o` flag, including the desired extension and the input. The input is provided as the last argument.
 
+```shell
+$ tex2img -o ./test.svg '$\alpha = 2$'
 ```
-$ ./tex2img.py -o ./test.jpg -i input.tex
+
+The input can also be provided from a file
+
+```shell
+$ tex2img -o ./test.jpg --input-file input.tex
 ```
 
 Extra parameters to the templates can be provided by using the `--param` argument. It can be used multiple times
 
-```
-$ ./tex2img.py -o ./test.pdf -i input.tex --param foo='bar' --param response=42
-```
-
-The TeX document is built first by injecting user input into a `template` with a `preamble`. Both the template and the preamble can be provided from a file by using the respective flags.
-
-```
-$ ./tex2img.py -o ./test.jpg -i input.tex --fontsize 14 --preamble preamble.txt --template template.txt
+```shell
+$ tex2img -o ./test.pdf -i input.tex --param foo='bar' --param response=42
 ```
 
-The template and the preamble are formatted using the `Template` Python module, so variables should be enclosed as `${variable}`. The default template and preamble are the following:
+The command arguments can be modified by using the `--arguments` flag. This can also be provided multiple times to change multiple commands
+
+```shell
+$ tex2img -v -o test.png --arguments png='-dNOPAUSE -sDEVICE=pngalpha -r1200 -o {out_file} {pdf_file}' -i input.tex
+```
+
+Verbose output can be activated by using the `--verbose` flag
+
+```shell
+$ tex2img -v -o test.png '$\alpha = \beta = 2$'
+15:01:47 :: INFO :: Wrote latex to /tmp/tmp2ys85a0q_tex2img/test.tex
+15:01:47 :: INFO :: Converted latex to /tmp/tmp2ys85a0q_tex2img/test.dvi
+15:01:47 :: INFO :: Converted dvi to /tmp/tmp2ys85a0q_tex2img/test.ps
+15:01:47 :: INFO :: Converted ps to /tmp/tmp2ys85a0q_tex2img/test.pdf
+15:01:48 :: INFO :: Converted pdf to /path/to/test.png
+```
+
+The TeX document is built first by injecting user input into a `template` with a `preamble` configuration. The template and the preamble are formatted using the `Template` Python module, so variables should be enclosed as `${variable}`. Both the template and the preamble can be provided from a file by using the `--template-file` and `--preamble-file` flags respectively.
+
+The default template and preamble are the following:
 
 ```text
 \documentclass[${fontsize}pt,preview]{standalone}
@@ -118,6 +157,33 @@ ${body}
 \usepackage{amsmath,amsthm,amssymb,amsfonts,amstext,newtxtext}
 \usepackage{color,soul}
 \usepackage{tikz}
+```
+
+## Using it from Python
+
+This utility can also be used from inside python. You can take a look at the cli.py file in this repository to see how or with the following example
+
+```python
+from tex2img import DEFAULT_TEMPLATE, DEFAULT_PREAMBLE, DEFAULT_FONTSIZE
+from tex2img import TeX2img
+
+template = None or DEFAULT_TEMPLATE
+preamble = None or DEFAULT_PREAMBLE
+fontsize = None or DEFAULT_FONTSIZE
+params = {}
+
+converter = TeX2img(template, preamble, fontsize, params)
+body = r"$\alpha = 2$"
+latex_str = converter.prepare(body)
+
+# The valid extensions are defined in tex2img.VALID_SUFFIXES
+output = "/path/to/file.png"
+try:
+    converter.render(
+        latex_str, output_file=output, verbose=False,optimize_svg=False
+    )
+except Exception as e:
+    print(e)
 ```
 
 ## License
