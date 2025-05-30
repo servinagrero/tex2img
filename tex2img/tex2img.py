@@ -17,12 +17,10 @@ from typing import Optional, Dict, List
 
 DEFAULT_TEMPLATE = cleandoc(
     r"""
-    \documentclass[${fontsize}pt,preview]{standalone}
+    \documentclass[${fontsize}pt,preview,varwidth]{standalone}
     ${preamble}
     \begin{document}
-    \begin{preview}
     ${body}
-    \end{preview}
     \end{document}
     """
 )
@@ -40,6 +38,8 @@ DEFAULT_PREAMBLE = cleandoc(
     \usepackage{amsmath,amsthm,amssymb,amsfonts,amstext,newtxtext}
     \usepackage{color,soul}
     \usepackage{tikz}
+    \usepackage{booktabs}
+    \usepackage{enumitem}
     """
 )
 
@@ -234,15 +234,15 @@ class TeX2img:
             ret = subprocess.run(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 cwd=tmpdir,
                 env=env,
             )
             ret.check_returncode()
         except subprocess.CalledProcessError as e:
             msg = f"Command '{cmd}' failed with exit code {e.returncode}"
+            self.logger.error(e.stdout.decode("utf-8"))
             self.logger.error(msg)
-            self.logger.error(e.stderr.decode("utf-8"))
             raise RuntimeError(msg)
 
     def render(

@@ -113,7 +113,7 @@ def main():
     preamble = None
     if args["preamble_file"] and Path(args["preamble_file"]).exists():
         with open(args["preamble_file"], "r") as fp:
-            template = fp.read()
+            preamble = fp.read()
 
     converter = TeX2img(template, preamble, args["fontsize"], args["params"])
 
@@ -128,6 +128,10 @@ def main():
         for name, cmd in converter.commands.items():
             print(f"[{name}] {cmd.path()}")
             print(f"{cmd.cmd} {cmd.args}\n")
+        print("[Preamble]")
+        print(converter.preamble)
+        print("[Template]")
+        print(converter.template)
         sys.exit(0)
 
     if args.get("input_file", False):
@@ -146,5 +150,6 @@ def main():
             verbose=args["verbose"],
             optimize_svg=args["optimize_svg"],
         )
-    except Exception as exc:
-        converter.logger.error(exc)
+    except Exception:
+        # The error is already handled internally
+        pass
